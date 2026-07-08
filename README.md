@@ -1,21 +1,19 @@
-# ONNX Runtime — aarch64 + CUDA 13 + Blackwell (GB10/DGX Spark)
+# ONNX Runtime — amd64 / aarch64 + CUDA 13 + Blackwell RTX series (sm_120)
 
-**Prebuilt ONNX Runtime 1.24.4 shared libraries with CUDA Execution Provider for NVIDIA Blackwell (sm_121) on aarch64 Linux.**
+**Prebuilt ONNX Runtime 1.24.4 shared libraries with CUDA Execution Provider for NVIDIA Blackwell (sm_120) on amd64 Linux.**
 
-As of April 2026, no prebuilt ONNX Runtime GPU binaries exist for aarch64 Linux from any source — not Microsoft's GitHub releases, not PyPI (`onnxruntime-gpu`), not the `ort` Rust crate's download cache (pyke.io), and not NVIDIA's apt repositories. This repo fills that gap.
+As of April 2026, no prebuilt ONNX Runtime GPU binaries exist for Blackwell sm_120 nor sm_121 Linux from any source — not Microsoft's GitHub releases, not PyPI (`onnxruntime-gpu`), not the `ort` Rust crate's download cache (pyke.io), and not NVIDIA's apt repositories. This repo fills that gap.
 
 ## Hardware Tested
 
 | Component | Value |
 |---|---|
-| Platform | NVIDIA DGX Spark (ASUS Ascent GX10) |
-| CPU | NVIDIA Grace (ARM64/aarch64) |
-| GPU | NVIDIA GB10 (Blackwell, sm_121) |
-| Memory | 128 GB unified LPDDR5x |
+| CPU ARCH | amd64 / x86_64 |
+| GPU | Nvidia RTX 5060 Ti (Blackwell, sm_120) |
 | OS | Ubuntu 24.04 (Noble) |
 | CUDA | 13.0 (V13.0.88) |
-| Driver | 580.142 |
-| cuDNN | 9.20.0 |
+| Driver | 595.71.05 |
+| cuDNN | 9.22.0 |
 
 ## What's Included
 
@@ -28,8 +26,15 @@ lib/
 └── libonnxruntime_providers_shared.so # Shared provider infrastructure
 ```
 
+```
+Releases (supports sm_120 until sm_75)/
+├── onnxruntime_gpu-1.24.4-cp312-cp312-linux_x86_64.whl # main pip install whl py312
+└── onnxruntime_gpu-1.24.4-cp311-cp311-linux_x86_64.whl # main pip install whl py311
+```
+
 ## Installation
 
+**libs for cpp**
 ```bash
 sudo cp lib/*.so* /usr/local/lib/
 sudo ldconfig
@@ -38,6 +43,16 @@ sudo ldconfig
 Verify:
 ```bash
 ldconfig -p | grep onnxruntime
+```
+
+**Python 3.12 pip**
+```python
+pip install onnxruntime_gpu-1.24.4-cp312-cp312-linux_x86_64.whl
+```
+
+**Python 3.11 pip**
+```python
+pip install onnxruntime_gpu-1.24.4-cp311-cp311-linux_x86_64.whl
 ```
 
 ## Prerequisites
@@ -50,8 +65,13 @@ ldconfig -p | grep onnxruntime
 
 ### Python
 ```python
-# onnxruntime Python package won't work (no aarch64 GPU wheel exists).
-# Use ctypes or build the Python wheel from source (see Build Instructions).
+import onnxruntime as ort
+
+# Check all execution providers compiled into this installation
+print("Available Providers:", ort.get_available_providers())
+
+# Check the device string ORT detects
+print("Device:", ort.get_device())
 ```
 
 ### Rust (ort crate)
@@ -105,19 +125,6 @@ Run with `RUST_LOG=ort=debug` to confirm CUDA activation:
     INFO ort::ep: Successfully registered `CUDAExecutionProvider`
     INFO ort::logging: Creating BFCArena for Cuda ...
 
-## Performance
-
-Tested with snowflake-arctic-embed-m-v2.0 (768-dim embedding model):
-
-| Backend | Model | Inference Time |
-|---|---|---|
-| tract-onnx (pure Rust, CPU) | Quantized INT8 | ~3,400ms |
-| ORT 1.24.4 CPU | FP32 | ~135ms |
-| ORT 1.24.4 CUDA (GB10) | FP32 | ~149ms cold / TBD warm |
-| ORT 1.24.4 CPU (CUDA_VISIBLE_DEVICES="") | FP32 | ~3,360ms |
-
-The CUDA vs CPU-disabled test confirms GPU acceleration is active. The similar cold-start times (135ms ORT CPU vs 149ms CUDA) reflect that cold start is dominated by model loading; the CUDA advantage becomes clear in sustained/warm inference (e.g., MCP server with persistent session).
-
 ### Verification
 
 With `RUST_LOG=ort=debug`, ORT confirms CUDA activation:
@@ -140,7 +147,7 @@ git clone --recursive --branch v1.24.4 --depth 1 \
   https://github.com/microsoft/onnxruntime.git
 cd onnxruntime
 
-# Build with CUDA for Blackwell (sm_121)
+# Build with CUDA for Blackwell - Turing (sm_120 - sm_75)
 ./build.sh --config Release \
   --use_cuda \
   --cuda_home /usr/local/cuda \
@@ -148,9 +155,13 @@ cd onnxruntime
   --build_shared_lib \
   --parallel $(nproc) \
   --skip_tests \
-  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=121
+  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;80;86;89;90;100;120"
+
+# Run ./build.sh on python3.12 env will produce .whl package for cp312
+# Run ./build.sh on python3.11 env will produce .whl package for cp311
 
 # Output: build/Linux/Release/libonnxruntime.so.1.24.4
+# Output (pip whl): build/Linux/Release/dist/onnxruntime_gpu-1.24.4-cp3xx-cp3xx-linux_x86_64.whl
 ```
 
 ### Build Gotchas
